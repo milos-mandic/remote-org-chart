@@ -74,6 +74,15 @@
     });
 </script>
 
+{% elif mode == "error" %}
+<header class="topbar"><div class="brand"><h1>Org Chart</h1></div></header>
+<main>
+  <div class="state">
+    <p class="err">Something went wrong.</p>
+    <p class="dim">An unexpected error occurred on our end. <a href="/">Try again</a>.</p>
+  </div>
+</main>
+
 {% else %}
 {%- set c = org.source_counts -%}
 <header class="topbar">

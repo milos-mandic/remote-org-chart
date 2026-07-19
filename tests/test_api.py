@@ -37,6 +37,20 @@ def stub_build(monkeypatch, *, name="Acme", calls=None, raises=False):
 
 # --- healthz ---------------------------------------------------------------
 
+def test_unhandled_error_returns_clean_json_500(monkeypatch):
+    # An unexpected (non-HTTPException) error must become a clean 500, not a
+    # raw stack trace. raise_server_exceptions=False lets us observe the
+    # handler's response the way a real client would.
+    def boom(*args, **kwargs):
+        raise ValueError("kaboom")
+
+    monkeypatch.setattr(main, "get_org", boom)
+    safe = TestClient(main.app, raise_server_exceptions=False)
+    r = safe.get("/api/org")
+    assert r.status_code == 500
+    assert r.json() == {"error": "internal_error", "detail": "An unexpected error occurred."}
+
+
 def test_head_requests_are_allowed(monkeypatch):
     # Uptime monitors ping with HEAD; these must not return 405.
     stub_build(monkeypatch)

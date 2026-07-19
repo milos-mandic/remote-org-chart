@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -189,3 +189,19 @@ def healthz() -> dict:
         "token_configured": bool(settings.remote_api_token),
         "cache_age_seconds": cache.age_seconds(),
     }
+
+
+@app.exception_handler(Exception)
+async def on_unhandled_error(request: Request, exc: Exception) -> HTMLResponse | JSONResponse:
+    """Last resort: turn an *unexpected* error into a clean response instead of
+    a raw stack trace. Known upstream failures are already surfaced as 503 via
+    HTTPException, which FastAPI handles separately and this does not intercept.
+    Consistent with the app's logging rule, we log only the path and exception
+    type — never a payload."""
+    logger.error("unhandled error on %s: %s", request.url.path, type(exc).__name__)
+    if request.url.path.startswith("/api"):
+        return JSONResponse(
+            status_code=500,
+            content={"error": "internal_error", "detail": "An unexpected error occurred."},
+        )
+    return templates.TemplateResponse(request, "index.html", {"mode": "error"}, status_code=500)
