@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Org Chart{% if mode == "ready" and org.company_name %} — {{ org.company_name }}{% endif %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+{# ---- the card shown in a summary row (also reused for flat lists) ---- #}
+{% macro card(p, report_count, ancestors) %}
+{%- set models = {'global_payroll': 'GP', 'eor': 'EOR', 'direct': 'Direct'} -%}
+{%- set model = models.get(p.employment_model, p.employment_model) -%}
+<div class="card{{ ' muted' if p.bucket == 'former' }}"
+     data-id="{{ p.id }}" data-name="{{ p.full_name }}" data-title="{{ p.job_title }}"
+     data-dept="{{ p.department }}" data-country="{{ p.country_code or '' }}"
+     data-model="{{ model or '' }}" data-bucket="{{ p.bucket or '' }}"
+     data-flag="{{ '1' if p.data_inconsistent else '' }}" data-reports="{{ report_count }}">
+  {% if report_count %}<button class="caret" aria-label="Toggle reports"></button>{% endif %}
+  <span class="avatar" style="--h: {{ p.full_name | hue }}">{{ p.full_name | initials }}</span>
+  <div class="card-body">
+    <div class="card-head">
+      <span class="name">{{ p.full_name }}</span>
+      {% if report_count %}<span class="reports">{{ report_count }} direct</span>{% endif %}
+      {% if p.data_inconsistent %}<span class="badge warn" title="status and lifecycle contradict each other">⚠ inconsistent</span>{% endif %}
+    </div>
+    <div class="title">{{ p.job_title }}</div>
+    <div class="meta">
+      <span class="badge dept">{{ p.department }}</span>
+      {% if p.country_code %}<span class="tag">{{ p.country_code }}</span>{% endif %}
+      {% if model %}<span class="tag model">{{ model }}</span>{% endif %}
+    </div>
+    {% if ancestors %}<div class="breadcrumb">{{ ancestors | join(' › ') }} ›</div>{% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{# ---- one person + their subtree; `ancestors` is the reporting line above them ---- #}
+{% macro node(n, ancestors) %}
+{%- set p = n.person -%}
+<details class="node{{ ' leaf' if not n.children }}"
+         data-search="{{ (p.full_name ~ ' ' ~ (p.job_title or '') ~ ' ' ~ (p.department or '')) | lower }}"
+         {{ 'open' if n.children }}>
+  <summary>{{ card(p, n.children | length, ancestors) }}</summary>
+  {% if n.children %}
+  <div class="children">
+    {% for c in n.children %}{{ node(c, ancestors + [p.full_name]) }}{% endfor %}
+  </div>
+  {% endif %}
+</details>
+{% endmacro %}
+
+
+{% if mode == "loading" %}
+<header class="topbar"><div class="brand"><h1>Org Chart</h1></div></header>
+<main>
+  <div id="loading" class="state">
+    <div class="spinner"></div>
+    <p>Building org chart…</p>
+    <p class="dim">First load fetches every employee from the sandbox — this takes ~30–60s. It's cached after that.</p>
+  </div>
+  <div id="load-error" class="state hidden">
+    <p class="err">Couldn't reach the Remote API.</p>
+    <p class="dim">The upstream sandbox may be unavailable. <a href="/">Try again</a>.</p>
+  </div>
+</main>
+<script>
+  fetch("/api/org")
+    .then(function (r) { if (r.ok) { location.reload(); return; } throw new Error("status " + r.status); })
+    .catch(function () {
+      document.getElementById("loading").classList.add("hidden");
+      document.getElementById("load-error").classList.remove("hidden");
+    });
+</script>
+
+{% else %}
+{%- set c = org.source_counts -%}
+<header class="topbar">
+  <div class="brand">
+    <h1>Org Chart</h1>
+    {% if org.company_name %}<span class="company">{{ org.company_name }}</span>{% endif %}
+  </div>
+  <input id="search" type="search" placeholder="Search name, title, department…" autocomplete="off" aria-label="Search">
+  <div class="counts">
+    <span><strong>{{ c.current }}</strong> current</span>
+    <span><strong>{{ c.onboarding }}</strong> onboarding</span>
+    <span><strong>{{ c.former }}</strong> former</span>
+  </div>
+  <button id="refresh" title="Re-fetch from the API">↻ Refresh</button>
+</header>
+
+<main id="chart">
+  <p id="no-results" class="state hidden dim">No matches.</p>
+
+  <section class="block">
+    {% for root in org.forest %}{{ node(root, []) }}{% endfor %}
+  </section>
+
+  {% if org.unassigned %}
+  <section class="block">
+    <details open class="section">
+      <summary class="section-head">Unassigned <span class="dim">({{ org.unassigned | length }})</span></summary>
+      <p class="dim section-note">Current employees whose manager link doesn't resolve into the chart.</p>
+      {% for u in org.unassigned %}
+        <details class="node reason-{{ u.reason }}{{ ' leaf' if not u.children }}"
+                 data-search="{{ (u.person.full_name ~ ' ' ~ (u.person.job_title or '') ~ ' ' ~ (u.person.department or '')) | lower }}"
+                 {{ 'open' if u.children }}>
+          <summary>
+            {{ card(u.person, u.children | length, []) }}
+            <span class="reason-tag">{{ u.reason | replace('_', ' ') }}</span>
+          </summary>
+          {% if u.children %}
+          <div class="children">
+            {% for c2 in u.children %}{{ node(c2, [u.person.full_name]) }}{% endfor %}
+          </div>
+          {% endif %}
+        </details>
+      {% endfor %}
+    </details>
+  </section>
+  {% endif %}
+
+  {% if org.onboarding %}
+  <section class="block">
+    <details open class="section">
+      <summary class="section-head">Starting soon / onboarding <span class="dim">({{ org.onboarding | length }})</span></summary>
+      <div class="flat">
+        {% for p in org.onboarding %}
+        <div class="node leaf" data-search="{{ (p.full_name ~ ' ' ~ (p.job_title or '') ~ ' ' ~ (p.department or '')) | lower }}">
+          {{ card(p, 0, []) }}
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+  </section>
+  {% endif %}
+
+  {% if org.former %}
+  <section class="block">
+    <details class="section">
+      <summary class="section-head">Former <span class="dim">({{ org.former | length }})</span></summary>
+      <div class="flat">
+        {% for p in org.former %}
+        <div class="node leaf" data-search="{{ (p.full_name ~ ' ' ~ (p.job_title or '') ~ ' ' ~ (p.department or '')) | lower }}">
+          {{ card(p, 0, []) }}
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+  </section>
+  {% endif %}
+
+  {% if org.fetch_errors %}
+  <p class="dim fetch-errors">{{ org.fetch_errors | length }} record(s) couldn't be fully fetched and are shown with limited data.</p>
+  {% endif %}
+
+  <footer class="dim">Generated {{ org.generated_at }} · {{ c.total }} total records</footer>
+</main>
+
+{# ---- profile drawer (populated client-side from the DOM) ---- #}
+<div id="panel-backdrop" class="backdrop hidden"></div>
+<aside id="panel" class="panel" aria-hidden="true">
+  <div class="panel-head">
+    <span id="p-avatar" class="avatar lg"></span>
+    <div class="panel-id">
+      <div id="p-name" class="p-name"></div>
+      <div id="p-title" class="dim"></div>
+    </div>
+    <button id="p-close" aria-label="Close">✕</button>
+  </div>
+  <div class="panel-body">
+    <div id="p-badges" class="panel-badges"></div>
+    <section class="panel-sec">
+      <h4>Reporting line</h4>
+      <div id="p-line" class="p-line"></div>
+    </section>
+    <section class="panel-sec">
+      <h4>Direct reports <span id="p-rcount" class="dim"></span></h4>
+      <ul id="p-reports" class="p-reports"></ul>
+    </section>
+  </div>
+</aside>
+
+<script src="/static/app.js"></script>
+{% endif %}
+
+</body>
+</html>

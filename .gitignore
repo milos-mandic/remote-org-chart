@@ -1,0 +1,11 @@
+.env
+discovery/
+__pycache__/
+.venv/
+*.pyc
+
+# original challenge brief — company's prompt, not part of the solution
+og_reqs.md
+
+# internal build plan, kept local only
+CLAUDE.md

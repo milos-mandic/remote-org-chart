@@ -1,0 +1,22 @@
+name: keep-warm
+
+# Render's free tier sleeps after ~15 min of no traffic, and the next visitor
+# then pays a container wake (~30-60s) on top of the app's cold fetch. This job
+# pings the app every 10 minutes so it stays awake and its cache stays warm.
+# Hitting /api/org (rather than /healthz) also keeps the built chart fresh, so
+# a reviewer lands on an instant page.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}   # allow manual runs from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the app
+        run: |
+          curl -sS -m 120 -o /dev/null \
+            -w "org %{http_code} in %{time_total}s\n" \
+            https://remote-org-chart.onrender.com/api/org

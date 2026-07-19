@@ -1,0 +1,18 @@
+# Render Blueprint. In Render: New → Blueprint → pick this repo.
+# The app keeps its built org chart in an in-memory cache behind a slow
+# (~15-60s) cold fetch, so it needs a long-running web service, NOT serverless.
+services:
+  - type: web
+    name: remote-org-chart
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    # Python version is pinned via the .python-version file (3.12). A bare
+    # PYTHON_VERSION env var is rejected and Render falls back to a default
+    # (3.14) that has no prebuilt pydantic-core wheel.
+    envVars:
+      # Set in the Render dashboard (Environment tab) — never committed.
+      - key: REMOTE_API_TOKEN
+        sync: false
