@@ -37,6 +37,13 @@ def stub_build(monkeypatch, *, name="Acme", calls=None, raises=False):
 
 # --- healthz ---------------------------------------------------------------
 
+def test_head_requests_are_allowed(monkeypatch):
+    # Uptime monitors ping with HEAD; these must not return 405.
+    stub_build(monkeypatch)
+    assert client.head("/healthz").status_code == 200
+    assert client.head("/api/org").status_code == 200
+
+
 def test_healthz_reports_no_cache_before_first_build():
     r = client.get("/healthz")
     assert r.status_code == 200

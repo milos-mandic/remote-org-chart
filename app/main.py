@@ -152,7 +152,9 @@ async def get_org(*, force: bool) -> OrgResponse:
         return response
 
 
-@app.get("/", response_class=HTMLResponse)
+# These read endpoints allow HEAD as well as GET: uptime monitors often ping
+# with HEAD, and a GET-only route answers HEAD with 405 (reads as "down").
+@app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
     """Server-render the org chart when we have data; otherwise show a loading
     page that triggers the (blocking) build client-side and reloads when ready.
@@ -168,7 +170,7 @@ async def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "index.html", {"mode": "loading"})
 
 
-@app.get("/api/org", response_model=OrgResponse)
+@app.api_route("/api/org", methods=["GET", "HEAD"], response_model=OrgResponse)
 async def api_org() -> OrgResponse:
     return await get_org(force=False)
 
@@ -178,7 +180,7 @@ async def api_refresh() -> OrgResponse:
     return await get_org(force=True)
 
 
-@app.get("/healthz")
+@app.api_route("/healthz", methods=["GET", "HEAD"])
 def healthz() -> dict:
     """Liveness probe for the deployment platform: token presence + cache age."""
     settings = get_settings()
